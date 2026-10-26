@@ -1,0 +1,6 @@
+assets/generate_char_path/node_modules/
+assets/generate_char_path/.next/
+assets/generate_char_path/tsconfig.tsbuildinfo
+.env
+exports/
+works/

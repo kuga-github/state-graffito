@@ -1,0 +1,36 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #f4f3ef; color: #20221f; font-family: Arial, "Noto Sans JP", sans-serif; }
+button, input, select { font: inherit; }
+button { border: 1px solid #343932; border-radius: 5px; padding: 8px 12px; background: white; cursor: pointer; }
+button:hover { background: #ecefe8; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+input, select { border: 1px solid #aeb4aa; border-radius: 4px; padding: 8px; }
+a { color: #244f39; }
+.shell { max-width: 1160px; margin: 0 auto; padding: 28px 22px 60px; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 20px; }
+.header h1 { margin: 0; font-size: 25px; }
+.layout { display: grid; grid-template-columns: minmax(310px, 460px) minmax(300px, 1fr); gap: 22px; align-items: start; }
+.card { background: white; border: 1px solid #dcdfd8; border-radius: 8px; padding: 18px; margin-bottom: 18px; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.toolbar, .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.toolbar { flex-wrap: wrap; margin: 12px 0; }
+.grid { width: 100%; aspect-ratio: 1; border: 1px solid #7d857a; touch-action: manipulation; }
+.grid-preview { border: 0; }
+.point-list, .path-list { display: grid; gap: 8px; }
+.point-item, .path-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border: 1px solid #e0e3dd; border-radius: 5px; }
+.path-item-open { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 8px; border: 0; padding: 4px; text-align: left; }
+.path-item-delete { border-color: #bc7770; color: #9d3028; }
+.muted { color: #646b62; font-size: 13px; }
+.error { color: #a32121; white-space: pre-wrap; }
+.success { color: #21663c; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.metrics div { padding: 9px; background: #f5f6f3; border-radius: 5px; }
+.metrics dt { color: #62695f; font-size: 12px; }
+.metrics dd { margin: 4px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.path-scroll { max-height: 470px; overflow: auto; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  .header { align-items: flex-start; flex-direction: column; }
+  .shell { padding: 20px 14px 40px; }
+}

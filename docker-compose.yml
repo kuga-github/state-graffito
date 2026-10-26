@@ -1,0 +1,206 @@
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-state-graffito-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-state_graffito}
+      MYSQL_USER: ${MYSQL_USER:-state_graffito}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./assets/generate_char_path/db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+      - ./assets/fetch_cabinet_info/db/init.sql:/docker-entrypoint-initdb.d/002-cabinet-info.sql:ro
+      - ./assets/fetch_diet_bills/db/init.sql:/docker-entrypoint-initdb.d/003-diet-bills.sql:ro
+      - ./assets/fetch_cabinet_wiki/db/init.sql:/docker-entrypoint-initdb.d/004-cabinet-wiki.sql:ro
+      - ./assets/map_cabinet_diet_bills/db/init.sql:/docker-entrypoint-initdb.d/005-cabinet-diet-bills.sql:ro
+      - ./assets/create_prime_minister_mart/db/init.sql:/docker-entrypoint-initdb.d/006-prime-minister-mart.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      state-graffito:
+        aliases:
+          - state-graffito-db
+
+  web:
+    build:
+      context: ./assets/generate_char_path
+    working_dir: /app
+    command: npm run dev -- --hostname 0.0.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./assets/generate_char_path:/app
+      - ./assets/generate_char_path/node_modules:/app/node_modules
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+    networks:
+      - state-graffito
+
+  fetch_cabinet_info:
+    build:
+      context: ./assets/fetch_cabinet_info
+    profiles:
+      - tools
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+      CSV_OUTPUT_DIR: /exports
+    volumes:
+      - ./assets/fetch_cabinet_info/db:/app/db:ro
+      - ./exports:/exports
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - state-graffito
+
+  fetch_diet_bills:
+    build:
+      context: ./assets/fetch_diet_bills
+    profiles:
+      - tools
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+      CSV_OUTPUT_DIR: /exports
+    volumes:
+      - ./assets/fetch_diet_bills/db:/app/db:ro
+      - ./exports:/exports
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - state-graffito
+
+  map_cabinet_diet_bills:
+    build:
+      context: ./assets/map_cabinet_diet_bills
+    profiles:
+      - tools
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+      CSV_OUTPUT_DIR: /exports
+    volumes:
+      - ./assets/map_cabinet_diet_bills/db:/app/db:ro
+      - ./exports:/exports
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - state-graffito
+
+  fetch_cabinet_wiki:
+    build:
+      context: ./assets/fetch_cabinet_wiki
+    profiles:
+      - tools
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+      CSV_OUTPUT_DIR: /exports
+    volumes:
+      - ./assets/fetch_cabinet_wiki/db:/app/db:ro
+      - ./exports:/exports
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - state-graffito
+
+  create_prime_minister_mart:
+    build:
+      context: ./assets/create_prime_minister_mart
+    profiles:
+      - tools
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+      CSV_OUTPUT_DIR: /exports
+    volumes:
+      - ./assets/create_prime_minister_mart/db:/app/db:ro
+      - ./exports:/exports
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - state-graffito
+
+  cabinet_llm:
+    build:
+      context: ./services/cabinet_llm
+    profiles:
+      - tools
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-state_graffito}
+      DB_USER: ${MYSQL_USER:-state_graffito}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-state-graffito}
+      MART_SCHEMA_PATH: /app/source_db/init.sql
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_GENAI_USE_VERTEXAI: ${GOOGLE_GENAI_USE_VERTEXAI:-}
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+      GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-}
+    volumes:
+      - ./assets/create_prime_minister_mart/db:/app/source_db:ro
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - state-graffito
+
+  cabinet_score:
+    build:
+      context: ./services/cabinet_score
+    profiles:
+      - tools
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+
+volumes:
+  mysql-data:
+
+networks:
+  state-graffito:
+    name: state-graffito
+    driver: bridge

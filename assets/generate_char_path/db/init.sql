@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS character_paths (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  category VARCHAR(120) NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  strokes JSON NOT NULL,
+  metrics JSON NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_character_paths_category_name (category, name)
+);
