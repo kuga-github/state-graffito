@@ -141,6 +141,8 @@ In addition to the tag and selected character paths, the tag-generation pipeline
 to the work directory. The image combines basic CABINET information and counts, category scores and shape ranges,
 the decoration category, and selected character paths. All tables have evenly sized columns and rows; label cells in the score and shape tables
 span two rows each. The shape table headings are `linearity`, `length`, `area`, `centroid`, and `addon`.
+Below the title, centered `source code: https://github.com/kuga-github/state-graffito` is shown in the same font size as table values.
+There is a 40 px-equivalent gap between the subtitle and the CABINET heading.
 The selected character-path table displays only character names, not categories. For the `capital` category,
 the character in the top row is uppercase. Row heights and font sizes are consistent across tables, with spacing between the title and tables,
 between tables, and between sections. Section spacing is equivalent to 20 px, spacing between tables is 0 px, and spacing between a title and table

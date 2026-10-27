@@ -920,6 +920,12 @@ def render_instruction_png(
         title_font,
         INSTRUCTION_MUTED_TEXT_COLOR,
     )
+    centered(
+        (margin, 148, logical_width - margin, 170),
+        "source code: https://github.com/kuga-github/state-graffito",
+        regular,
+        INSTRUCTION_TEXT_COLOR,
+    )
 
     cabinet_top = 188
     draw_section_title(cabinet_top, "CABINET")

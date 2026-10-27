@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from main import (
     FILTERS,
@@ -407,6 +407,40 @@ class TagPipelineTests(unittest.TestCase):
                     delta=0.5,
                 )
                 self.assertEqual(instruction.format, "PNG")
+                subtitle_x1 = round(100 * INSTRUCTION_IMAGE_SIZE[0] / 1200)
+                subtitle_x2 = round(1100 * INSTRUCTION_IMAGE_SIZE[0] / 1200)
+                subtitle_band = instruction.crop(
+                    (
+                        subtitle_x1,
+                        round(148 * INSTRUCTION_IMAGE_SIZE[1] / 1698),
+                        subtitle_x2,
+                        round(170 * INSTRUCTION_IMAGE_SIZE[1] / 1698),
+                    )
+                )
+                self.assertIsNotNone(
+                    ImageChops.difference(
+                        subtitle_band,
+                        Image.new("RGB", subtitle_band.size, (255, 255, 255)),
+                    ).getbbox()
+                )
+                subtitle_following_band = instruction.crop(
+                    (
+                        subtitle_x1,
+                        round(172 * INSTRUCTION_IMAGE_SIZE[1] / 1698),
+                        subtitle_x2,
+                        round(194 * INSTRUCTION_IMAGE_SIZE[1] / 1698),
+                    )
+                )
+                self.assertIsNone(
+                    ImageChops.difference(
+                        subtitle_following_band,
+                        Image.new(
+                            "RGB",
+                            subtitle_following_band.size,
+                            (255, 255, 255),
+                        ),
+                    ).getbbox()
+                )
                 x = round(80 * INSTRUCTION_IMAGE_SIZE[0] / 1200)
                 self.assertEqual(
                     instruction.getpixel(
