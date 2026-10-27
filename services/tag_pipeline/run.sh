@@ -27,18 +27,11 @@ if [[ ! -f "${CONFIG_ABS_PATH}" ]]; then
     exit 1
 fi
 
-WORK_DIR="$(cd "$(dirname "${CONFIG_ABS_PATH}")" && pwd)"
+CONFIG_ABS_PATH="$(realpath "${CONFIG_ABS_PATH}")"
+WORK_DIR="$(dirname "${CONFIG_ABS_PATH}")"
 export LOCAL_UID="$(id -u)"
 export LOCAL_GID="$(id -g)"
 
-echo "[INFO] MySQL を起動しています..."
-docker compose -f "${COMPOSE_FILE}" up -d --wait db
-
-RUN_ARGS=(run --build --rm --no-deps)
-RUN_ARGS+=(
-    -v "${ROOT_DIR}/assets/create_prime_minister_mart/db:/app/source_db:ro"
-    -v "${WORK_DIR}:/workspace/work"
-)
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
     if [[ ! -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]]; then
         echo "[ERROR] GOOGLE_APPLICATION_CREDENTIALS のファイルがありません。" >&2
@@ -51,6 +44,8 @@ else
     CREDENTIALS_PATH=""
 fi
 
+RUN_ARGS=(run --build --rm --no-deps)
+RUN_ARGS+=(-v "${WORK_DIR}:/workspace/work")
 if [[ -n "${CREDENTIALS_PATH}" ]]; then
     RUN_ARGS+=(
         -v "${CREDENTIALS_PATH}:/run/secrets/google-application-credentials.json:ro"
@@ -58,7 +53,19 @@ if [[ -n "${CREDENTIALS_PATH}" ]]; then
     )
 fi
 
-echo "[INFO] 内閣マートの行をLLMで分析しています..."
-docker compose -f "${COMPOSE_FILE}" "${RUN_ARGS[@]}" cabinet_llm \
-    /workspace/work/config.yaml
-echo "[INFO] JSON: ${WORK_DIR}/cabinet_llm.json"
+echo "[INFO] MySQLを起動しています..."
+docker compose -f "${COMPOSE_FILE}" up -d --wait db
+echo "[INFO] 統合タグ生成パイプラインを実行しています..."
+docker compose -f "${COMPOSE_FILE}" "${RUN_ARGS[@]}" tag_pipeline \
+    "/workspace/work/$(basename "${CONFIG_ABS_PATH}")"
+if [[ ! -s "${WORK_DIR}/tag.json" ]]; then
+    echo "[ERROR] パイプライン出力が見つかりません: ${WORK_DIR}/tag.json" >&2
+    exit 1
+fi
+echo "[INFO] JSON: ${WORK_DIR}/tag.json"
+echo "[INFO] PNG: ${WORK_DIR}/debug/selected-string.png"
+if [[ ! -s "${WORK_DIR}/instruction.png" ]]; then
+    echo "[ERROR] Instruction画像が見つかりません: ${WORK_DIR}/instruction.png" >&2
+    exit 1
+fi
+echo "[INFO] PNG: ${WORK_DIR}/instruction.png"

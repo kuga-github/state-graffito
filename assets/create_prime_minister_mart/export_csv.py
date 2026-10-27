@@ -11,7 +11,6 @@ EXPORT_COLUMNS = (
     "prime_minister_number",
     "name",
     "name_kana",
-    "name_romaji",
     "tenure_start_date",
     "tenure_end_date",
     "tenure_start_date_era",

@@ -6,13 +6,13 @@ from bs4 import BeautifulSoup
 
 from main import (
     extract_prime_minister_links,
-    kana_to_passport,
     parse_cabinet_members,
     parse_era_date,
     parse_count,
     parse_tenure_period,
     parse_prime_minister_page,
     PrimeMinister,
+    migrate_legacy_name_romaji,
     save_prime_minister,
 )
 
@@ -31,11 +31,6 @@ class FetchCabinetInfoTests(unittest.TestCase):
                 104: "https://www.kantei.go.jp/jp/rekidainaikaku/104.html",
             },
         )
-
-    def test_converts_kana_to_passport_romaji(self):
-        self.assertEqual(kana_to_passport("たかいち　さなえ"), "takaichi sanae")
-        self.assertEqual(kana_to_passport("しんぶん"), "shimbun")
-        self.assertEqual(kana_to_passport("ちゅうおう"), "chuo")
 
     def test_parses_japanese_era_dates(self):
         self.assertEqual(str(parse_era_date("天保12年9月2日")), "1841-09-02")
@@ -61,13 +56,26 @@ class FetchCabinetInfoTests(unittest.TestCase):
     def test_marks_unreported_numeric_values_as_null(self):
         self.assertIsNone(parse_count("ー", "通算在職日数"))
 
+    def test_makes_legacy_romaji_column_optional_without_dropping_data(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchall.return_value = [
+            ("name_romaji", "varchar(240)", "NO", "MUL", None, "")
+        ]
+
+        migrate_legacy_name_romaji(connection)
+
+        cursor.execute.assert_any_call(
+            "ALTER TABLE prime_ministers "
+            "MODIFY COLUMN name_romaji VARCHAR(240) NULL"
+        )
+
     def test_saves_without_restarting_an_active_transaction(self):
         connection = MagicMock()
         prime_minister = PrimeMinister(
             number=104,
             name="高市 早苗",
             name_kana="たかいち さなえ",
-            name_romaji="takaichi sanae",
             birth_date=date(1961, 3, 7),
             birth_place="奈良県",
             tenure_start_date=date(2025, 10, 21),
@@ -83,6 +91,10 @@ class FetchCabinetInfoTests(unittest.TestCase):
         save_prime_minister(connection, prime_minister)
 
         connection.start_transaction.assert_not_called()
+        self.assertNotIn(
+            "name_romaji",
+            connection.cursor.return_value.execute.call_args.args[0],
+        )
         connection.commit.assert_called_once()
         connection.rollback.assert_not_called()
 
@@ -121,7 +133,6 @@ class FetchCabinetInfoTests(unittest.TestCase):
 
         self.assertEqual(prime_minister.name, "高市 早苗")
         self.assertEqual(prime_minister.name_kana, "たかいち さなえ")
-        self.assertEqual(prime_minister.name_romaji, "takaichi sanae")
         self.assertEqual(str(prime_minister.birth_date), "1961-03-07")
         self.assertEqual(
             (str(prime_minister.tenure_start_date), str(prime_minister.tenure_end_date)),

@@ -14,8 +14,7 @@
 │   ├── map_cabinet_diet_bills/ # 内閣と国会議案の対応表作成サービス・run.sh
 │   └── create_prime_minister_mart/ # 総理大臣マート作成サービス・run.sh
 ├── services/
-│   ├── cabinet_llm/          # 内閣マートのLLM分析サービス・run.sh
-│   └── cabinet_score/        # cabinet_llm.json の項目別スコア計算サービス・run.sh
+│   └── tag_pipeline/         # 内閣分析・採点・文字パス選択・Instruction画像生成サービス
 ├── docker-compose.yml        # Webアプリと共有MySQL
 ├── exports/                  # DBテーブルごとのCSV出力先
 └── README.md
@@ -37,7 +36,7 @@ MySQL の初期ユーザーとパスワードは開発用です。共有環境�
 
 ## 歴代内閣情報の取得
 
-`fetch_cabinet_info` は首相官邸の歴代内閣ページから指定した代数の範囲を取得し、総理大臣情報と閣僚名簿をMySQLに保存します。かなからローマ字への変換には pykakasi の Passport 式ヘボン式を使います。既存のローマ字データは、次回スクレイピング時に更新されます。スクリプトはMySQL起動時とスクレイピング完了後に各テーブルのCSVを `exports/` へ出力します。
+`fetch_cabinet_info` は首相官邸の歴代内閣ページから指定した代数の範囲を取得し、総理大臣情報と閣僚名簿をMySQLに保存します。スクリプトはMySQL起動時とスクレイピング完了後に各テーブルのCSVを `exports/` へ出力します。
 
 ```sh
 ./assets/fetch_cabinet_info/run.sh --from-number 1 --to-number 104
@@ -83,58 +82,80 @@ MySQL の初期ユーザーとパスワードは開発用です。共有環境�
 ./assets/create_prime_minister_mart/run.sh
 ```
 
-## 内閣マートのLLM分析
+## 総理大臣タグ生成パイプライン
 
-`cabinet_llm` サービスは `services/cabinet_llm/` にあります。`works/<work_name>/<work_version>/config.yaml`
-で指定された内閣の行を `prime_minister_mart` から読み込み、Geminiで重要議案の抽出と個別評価を行います。
-最終スコアの集計は行わず、2段階のLLMレスポンスを `works/<work_name>/<work_version>/cabinet_llm.json` に保存します。
-JSONには内閣番号・氏名・ローマ字名・在職期間（開始日・終了日・日数）・使用モデル名と、Task 1/Task 2の結果が含まれます。
-議案の `policy_score` と歴史イベントの `event_score` は連続値ではなく、正方向を `1`、負方向を `-1` とする二値です。中間値や `0` は出力しません。
-各段階のレスポンスは入力・モデル・プロンプトが同一なら、作品ディレクトリ内の `.cache/cabinet_llm/` から再利用します。
-
-各作品・バージョンごとに `works/<work_name>/<work_version>/config.yaml` を作成し、`common` の下に
-対象となる内閣番号を1以上の整数で指定します。Geminiのモデル名（バージョンを含む）も `gemini_model` で指定できます。
-省略時は `gemini-2.5-flash` を使用します。設定例:
+内閣分析・採点・文字パス選択を一つの `services/tag_pipeline/main.py` で実行します。
+作品ごとの `config.yaml` を指定し、最終結果を
+`works/<work_name>/<work_version>/tag.json` に保存します。中間JSONは作成せず、
+成功時は旧形式の中間JSONも削除します。
 
 ```yaml
 common:
   cabinet_number: 42
-  gemini_model: emini-3.8-flash
+  name_romaji: Shinzo Abe
+  gemini_model: gemini-2.5-flash
+  random_seed: 42
 ```
 
-`cabinet_number` の代わりに、DBの列名と同じ `prime_minister_number` も指定できます。両方を書く場合は同じ値にしてください。
-指定したモデル名はキャッシュの識別と出力JSONの `model` にも反映されます。
+`name_romaji` は必須で、`tag.json` のローマ字名とタグの生成に使います。
+`cabinet_number` の代わりにDB列名と同じ `prime_minister_number` も指定でき、両方を指定する場合は同じ整数にしてください。
+`name_romaji` は「名 姓」の順で入力してください。タグは先頭の名から母音を除いた文字列です。
+世代番号やローマ数字パスは生成しません。
+Geminiモデルは省略時 `gemini-2.5-flash`、乱数seedは省略時 `42` です。
 
 ```sh
-bash services/cabinet_llm/run.sh works/<work_name>/<work_version>/config.yaml
+bash services/tag_pipeline/run.sh works/<work_name>/<work_version>/config.yaml
 ```
 
-Google Cloud Vertex AIを利用する場合は `GOOGLE_GENAI_USE_VERTEXAI=true`、
-`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` を設定し、Application Default Credentialsを
-利用できるようにしてください。`run.sh` は標準の gcloud ADC ファイル
-（`~/.config/gcloud/application_default_credentials.json`）を見つけた場合、コンテナに読み取り専用で
-渡します。Gemini Developer APIを利用する場合は `GEMINI_API_KEY` を設定してください。
+Gemini Developer APIでは `GEMINI_API_KEY` を設定します。Vertex AIでは
+`GOOGLE_GENAI_USE_VERTEXAI=true`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` を設定し、
+ADCを利用できるようにしてください。`run.sh` は標準の gcloud ADC
+（`~/.config/gcloud/application_default_credentials.json`）をコンテナに読み取り専用で渡します。
+同一の入力・モデル・プロンプトに対するLLM応答は作品ディレクトリの `.cache/cabinet_llm/` から再利用します。
 
-## 項目別スコアの計算
+`tag.json` には内閣基本情報、Task 1/Task 2のLLM応答、項目別の `raw_sums` と `final_scores`、
+タグ・文字パス選択結果をまとめて出力します。議案・イベントの素点は `-1` または `1` の二値です。
+MILITARYは軍事活動の活発化、SECURITYは取り締まりの強化を正方向として評価します。
 
-`cabinet_score` は作品の `config.yaml` を引数に受け取り、同じディレクトリにある固定名の
-`cabinet_llm.json` の Task 2 の結果から5項目の合計と正規化スコアを計算し、
-同じ作品・バージョンの `cabinet_score.json` に保存します。`cabinet_llm.json` の内閣番号、氏名、
-ローマ字名、在職期間、モデル名も結果に引き継ぎます。先に `cabinet_llm` を実行してください。
+議案の審議結果ウェイトは成立 `1.0`、修正成立 `0.75`、閉会中審査 `0.5`、未了・撤回・否決 `0.0` です。
+GOVERNANCE分類の議案は政策方向スコア×審議結果ウェイトを加算します。成立ボーナスはありません。
+GOVERNANCEには持ち越しでない未了 `-0.5`、撤回 `-0.25`、否決 `-0.75` を加算します。
+不信任決議案は成立 `-1.0`、修正成立 `-0.75`、否決 `-0.25`、閉会中審査 `-0.5` を加算します。
+未了・撤回された不信任決議案に対するペナルティはありません。素点合計を `X`、在任日数を `D` とし、
+`alpha = 3.0 × max(1.0, (D / 365) ** 0.35)`、`final_score = round(tanh(X / alpha), 2)` で正規化します。
 
-```sh
-bash services/cabinet_score/run.sh works/<work_name>/<work_version>/config.yaml
-```
+文字パスはタグの各文字について、同じ頭文字の候補の順位パーセンタイルを0〜100で算出して選びます。
+スコア基準値 `s = 25 + (final_score + 1) × 25`（25〜75）を中心に、`s ± 25` の範囲に入る候補を残します
+（候補パーセンタイルの範囲0〜100に制限）。適用順と指標は MILITARY (`1 - curveRatio`)、
+SECURITY (`totalLength`)、FINANCE (`boundingBox.width × boundingBox.height`)、BANKING (`centroid.y`) です。
+上位フィルターの適用で候補が0件になった場合は、そのフィルターをスキップし、候補を減らさずに下位フィルターを続けます。
+各文字の `selection.filter_steps` にフィルター別の適用前後候補数を記録し、スキップした条件は
+`selection.skipped_filters` に記録します。同じタグ文字は選択パスを再利用します。
+GOVERNANCEスコア `g` は `(g + 1) × 50` で0〜100に変換し、`governance_percent` に保存します。
+この値が20未満なら `arrow`、40未満なら `double quotes`、60未満なら `null`、
+80未満なら `underline`、それ以外は `halo` とし、カテゴリを `decoration_category` に保存します。
+文字パスはローマ字タグの各文字分だけ結果に含みます。世代番号やローマ数字パスは含みません。
+選択した文字を横に並べた白背景PNGは `debug/selected-string.png` に保存します。
 
-議案の審議結果ウェイトは、成立 `1.0`、修正成立 `0.7`、閉会中審査 `0.2`、未了・撤回・否決 `0.0` です。
-GOVERNANCEには、持ち越しでない未了または撤回1件につき `-0.5`、否決1件につき `-1.0` を加算します。
-持ち越し法案は `diet_number` と `submission_session` の違いから `cabinet_llm` が判定し、
-持ち越しの未了はペナルティ対象外です。不信任・問責等の決議は可決 `-2.0`、否決・未了 `-1.0` です。
+タグ生成パイプラインは、タグと選択文字パスに加えて参考シート形式の `instruction.png` も
+作品ディレクトリへ自動出力します。画像にはCABINETの基本情報・件数、カテゴリ別スコアと形状範囲、
+装飾カテゴリ、選択文字パスをまとめます。各表は列幅と行高を均等にし、スコアと形状のラベルセルは
+それぞれ2行分を結合します。形状表の見出しは `linearity`、`length`、`area`、`centroid`、`addon` です。
+選択文字パス表にはカテゴリを表示せず文字名だけを表示し、カテゴリが
+`capital` の場合は上段の文字を大文字にします。すべての表で行高・文字サイズを揃え、タイトルと表、表同士、各セクション
+の間隔を設定しています。セクション間は20px相当、表同士は0px、タイトルと表の間は10px相当です。
+用紙の上下左右には等しい余白を設けます。GRAFFITO欄には枠だけを描画します。
+A4縦・300dpi（2480×3508px）で出力し、フォントは Courier Prime です。文字色・線色・線幅は
+`services/tag_pipeline/main.py` の
+`INSTRUCTION_TEXT_COLOR`、`INSTRUCTION_MUTED_TEXT_COLOR`、`INSTRUCTION_LINE_COLOR`、
+`INSTRUCTION_LINE_WIDTH` 定数で変更できます。
 
-各項目の素点合計を `X`、在任日数を `D` とし、`alpha = 3.0 × max(1.0, (D / 365) ** 0.35)`、
-`final_score = round(tanh(X / alpha), 2)` で正規化します。結果JSONには `alpha`、項目別の `raw_sums`、
-`final_scores` が含まれます。未了議案の持ち越し判定がない古い `cabinet_llm.json` は、
-新しいスキーマで `cabinet_llm` を再実行してから集計してください。
+## パーセンタイル範囲
+
+文字パス選択に使うパーセンタイル範囲は、文字ごとの記録からまとめ、
+`tag.json.selection.filter_ranges` にカテゴリ単位で出力します。各文字の
+`selection.filter_steps` には、その文字候補に対するフィルター適用前後の件数と、
+スキップされたフィルターだけを記録します。
 
 ## 文字パスの仕様
 
@@ -150,6 +171,8 @@ GOVERNANCEには、持ち越しでない未了または撤回1件につき `-0.5
 ## データベーススキーマ
 
 MySQLの初期化DDLは `assets/generate_char_path/db/init.sql`、`assets/fetch_cabinet_info/db/init.sql`、`assets/fetch_cabinet_wiki/db/init.sql`、`assets/fetch_diet_bills/db/init.sql`、`assets/map_cabinet_diet_bills/db/init.sql`、`assets/create_prime_minister_mart/db/init.sql` にあります。各サービスは既存のDBボリュームでも実行時に自分のテーブルを作成します。DBの全テーブルスキーマを以下に記載します。
+
+既存DBに保存済みの `name_romaji` 列や `prime_minister_tags` テーブルはデータ保護のため自動削除しませんが、以後の処理では使用しません。新規DBにはこれらを作成しません。
 
 ### `character_paths`（generate_char_path）
 
@@ -173,7 +196,6 @@ CREATE TABLE IF NOT EXISTS prime_ministers (
   prime_minister_number SMALLINT UNSIGNED NOT NULL,
   name VARCHAR(120) NOT NULL,
   name_kana VARCHAR(120) NOT NULL,
-  name_romaji VARCHAR(240) NOT NULL,
   birth_date DATE NOT NULL,
   birth_place VARCHAR(120) NOT NULL,
   tenure_start_date DATE NOT NULL,
@@ -279,7 +301,6 @@ CREATE TABLE IF NOT EXISTS prime_minister_mart (
   prime_minister_number SMALLINT UNSIGNED NOT NULL,
   name VARCHAR(120) NOT NULL,
   name_kana VARCHAR(120) NOT NULL,
-  name_romaji VARCHAR(240) NOT NULL,
   tenure_start_date DATE NOT NULL,
   tenure_end_date DATE NOT NULL,
   tenure_start_date_era VARCHAR(32) NOT NULL,

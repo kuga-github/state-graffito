@@ -7,13 +7,13 @@ from export_csv import export_table
 
 
 class FakeCursor:
-    description = (("id",), ("name",))
+    description = (("id",), ("name",), ("name_romaji",))
 
     def execute(self, query):
         self.query = query
 
     def __iter__(self):
-        return iter(((1, "首相, 氏名"),))
+        return iter(((1, "首相, 氏名", "Legacy Romaji"),))
 
     def close(self):
         pass

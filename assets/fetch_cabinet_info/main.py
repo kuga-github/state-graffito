@@ -15,7 +15,6 @@ from zoneinfo import ZoneInfo
 
 import mysql.connector
 from bs4 import BeautifulSoup, Comment
-from pykakasi import kakasi
 
 INDEX_URL = "https://www.kantei.go.jp/jp/rekidainaikaku/index.html"
 USER_AGENT = "state-graffito-fetch-cabinet-info/1.0"
@@ -54,7 +53,6 @@ ERA_STARTS = (
     (date(1868, 10, 23), "明治", 1867),
 )
 LOGGER = logging.getLogger("fetch_cabinet_info")
-ROMANIZER = kakasi()
 
 
 @dataclass(frozen=True)
@@ -62,7 +60,6 @@ class PrimeMinister:
     number: int
     name: str
     name_kana: str
-    name_romaji: str
     birth_date: date
     birth_place: str
     tenure_start_date: date
@@ -169,13 +166,6 @@ def parse_count(value: str, label: str) -> int | None:
     if match is None:
         raise ValueError(f"{label}を数値として解釈できません: {value}")
     return int(match.group().replace(",", ""))
-
-
-def kana_to_passport(value: str) -> str:
-    kana = normalize_text(value)
-    if not kana:
-        raise ValueError("かな表記が空です。")
-    return "".join(part["passport"] for part in ROMANIZER.convert(kana))
 
 
 def parse_cabinet_members(soup: BeautifulSoup) -> tuple[tuple[str, str, str], ...]:
@@ -300,7 +290,6 @@ def parse_prime_minister_page(html: str, expected_number: int) -> PrimeMinister:
         number=expected_number,
         name=name,
         name_kana=name_kana,
-        name_romaji=kana_to_passport(name_kana),
         birth_date=parse_era_date(profile["生年月日"]),
         birth_place=profile["出身地"],
         tenure_start_date=tenure_start_date,
@@ -320,15 +309,14 @@ def save_prime_minister(connection: mysql.connector.MySQLConnection, prime_minis
         cursor.execute(
             """
             INSERT INTO prime_ministers (
-              prime_minister_number, name, name_kana, name_romaji, birth_date,
+              prime_minister_number, name, name_kana, birth_date,
               birth_place, tenure_start_date, tenure_end_date,
               tenure_start_date_era, tenure_end_date_era, appointment_age,
               tenure_days, cumulative_tenure_days
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
               name = VALUES(name),
               name_kana = VALUES(name_kana),
-              name_romaji = VALUES(name_romaji),
               birth_date = VALUES(birth_date),
               birth_place = VALUES(birth_place),
               tenure_start_date = VALUES(tenure_start_date),
@@ -343,7 +331,6 @@ def save_prime_minister(connection: mysql.connector.MySQLConnection, prime_minis
                 prime_minister.number,
                 prime_minister.name,
                 prime_minister.name_kana,
-                prime_minister.name_romaji,
                 prime_minister.birth_date,
                 prime_minister.birth_place,
                 prime_minister.tenure_start_date,
@@ -389,6 +376,22 @@ def ensure_schema(connection: mysql.connector.MySQLConnection) -> None:
     finally:
         cursor.close()
     migrate_legacy_tenure_period(connection)
+    migrate_legacy_name_romaji(connection)
+
+
+def migrate_legacy_name_romaji(connection: mysql.connector.MySQLConnection) -> None:
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SHOW COLUMNS FROM prime_ministers")
+        columns = {row[0]: row for row in cursor.fetchall()}
+        legacy_column = columns.get("name_romaji")
+        if legacy_column is not None and legacy_column[2] == "NO":
+            cursor.execute(
+                "ALTER TABLE prime_ministers "
+                "MODIFY COLUMN name_romaji VARCHAR(240) NULL"
+            )
+    finally:
+        cursor.close()
 
 
 def migrate_legacy_tenure_period(connection: mysql.connector.MySQLConnection) -> None:

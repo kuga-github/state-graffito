@@ -165,9 +165,9 @@ services:
     networks:
       - state-graffito
 
-  cabinet_llm:
+  tag_pipeline:
     build:
-      context: ./services/cabinet_llm
+      context: ./services/tag_pipeline
     profiles:
       - tools
     environment:
@@ -189,13 +189,6 @@ services:
         condition: service_healthy
     networks:
       - state-graffito
-
-  cabinet_score:
-    build:
-      context: ./services/cabinet_score
-    profiles:
-      - tools
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
 
 volumes:
   mysql-data:

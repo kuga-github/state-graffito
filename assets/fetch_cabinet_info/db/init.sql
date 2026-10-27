@@ -2,7 +2,6 @@ CREATE TABLE IF NOT EXISTS prime_ministers (
   prime_minister_number SMALLINT UNSIGNED NOT NULL,
   name VARCHAR(120) NOT NULL,
   name_kana VARCHAR(120) NOT NULL,
-  name_romaji VARCHAR(240) NOT NULL,
   birth_date DATE NOT NULL,
   birth_place VARCHAR(120) NOT NULL,
   tenure_start_date DATE NOT NULL,

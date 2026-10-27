@@ -1,10 +1,24 @@
 import unittest
 from unittest.mock import MagicMock
 
-from main import refresh_mart
+from main import migrate_legacy_name_romaji, refresh_mart
 
 
 class CreatePrimeMinisterMartTests(unittest.TestCase):
+    def test_makes_legacy_romaji_column_optional_without_dropping_data(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchall.return_value = [
+            ("name_romaji", "varchar(240)", "NO", "MUL", None, "")
+        ]
+
+        migrate_legacy_name_romaji(connection)
+
+        cursor.execute.assert_any_call(
+            "ALTER TABLE prime_minister_mart "
+            "MODIFY COLUMN name_romaji VARCHAR(240) NULL"
+        )
+
     def test_rebuilds_mart_with_wiki_and_mapped_diet_bills(self):
         connection = MagicMock()
         connection.cursor.return_value.rowcount = 3
@@ -16,6 +30,7 @@ class CreatePrimeMinisterMartTests(unittest.TestCase):
         self.assertEqual(cursor.execute.call_count, 2)
         self.assertEqual(cursor.execute.call_args_list[0].args[0], "DELETE FROM prime_minister_mart")
         insert_query = cursor.execute.call_args_list[1].args[0]
+        self.assertNotIn("name_romaji", insert_query)
         self.assertIn("FROM prime_ministers AS pm", insert_query)
         self.assertIn("LEFT JOIN cabinet_wiki AS cw", insert_query)
         self.assertIn("FROM cabinet_diet_bills AS mapping", insert_query)

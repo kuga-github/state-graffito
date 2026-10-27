@@ -30,6 +30,22 @@ def ensure_schema(connection: mysql.connector.MySQLConnection) -> None:
                 cursor.execute(statement)
     finally:
         cursor.close()
+    migrate_legacy_name_romaji(connection)
+
+
+def migrate_legacy_name_romaji(connection: mysql.connector.MySQLConnection) -> None:
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SHOW COLUMNS FROM prime_minister_mart")
+        columns = {row[0]: row for row in cursor.fetchall()}
+        legacy_column = columns.get("name_romaji")
+        if legacy_column is not None and legacy_column[2] == "NO":
+            cursor.execute(
+                "ALTER TABLE prime_minister_mart "
+                "MODIFY COLUMN name_romaji VARCHAR(240) NULL"
+            )
+    finally:
+        cursor.close()
 
 
 def refresh_mart(connection: mysql.connector.MySQLConnection) -> int:
@@ -39,8 +55,7 @@ def refresh_mart(connection: mysql.connector.MySQLConnection) -> int:
         cursor.execute(
             """
             INSERT INTO prime_minister_mart (
-              prime_minister_number, name, name_kana, name_romaji,
-              tenure_start_date, tenure_end_date,
+              prime_minister_number, name, name_kana, tenure_start_date, tenure_end_date,
               tenure_start_date_era, tenure_end_date_era, tenure_days,
               wiki_body, diet
             )
@@ -48,7 +63,6 @@ def refresh_mart(connection: mysql.connector.MySQLConnection) -> int:
               pm.prime_minister_number,
               pm.name,
               pm.name_kana,
-              pm.name_romaji,
               pm.tenure_start_date,
               pm.tenure_end_date,
               pm.tenure_start_date_era,
