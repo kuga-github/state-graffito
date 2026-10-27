@@ -41,7 +41,7 @@ def refresh_mappings(
 ) -> int:
     cursor = connection.cursor()
     try:
-        # 回次ごとの最新日が属する内閣を採用し、複数該当時は新しい代を選ぶ
+        # Use the cabinet covering the latest date in each Diet session; choose the latest term if multiple cabinets match.
         cursor.execute("DROP TEMPORARY TABLE IF EXISTS diet_cabinet_assignments")
         cursor.execute(
             """
